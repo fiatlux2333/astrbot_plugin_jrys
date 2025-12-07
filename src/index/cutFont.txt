@@ -1,0 +1,1 @@
+pyftsubset notoemoji.ttf --text-file=emojiset.txt --flavor=woff2

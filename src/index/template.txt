@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运势签到V1.0</title>
+    <style>
+        @font-face {
+            font-family: 'emoji';
+            src: url("notoemoji.subset.woff2") format("woff2");
+        }
+
+        @font-face {
+            font-family: 'osans4';
+            src: url("osans4.subset.woff2") format("woff2");
+        }
+ 
+        body {
+            font-family: osans4, emoji, Arial, sans-serif;
+        }
+
+        .container {
+            max-width: 600px;
+        }
+
+        .header {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            margin-left: 24px;
+            margin-right: 24px;
+            margin-top: -50px;
+        }
+        
+        .avatar {
+            max-width: 80px;
+            max-height: 80px;
+            border-radius: 10px;
+            border: 3px solid #ffffff;
+        }
+
+        .dateInfo {
+            max-height: 83px;
+            width: 80%;
+            border-radius: 10px;
+            background: #ffffff5f;
+            box-shadow: 0px 0px 5px #a7a7a7;
+            backdrop-filter: blur(6px);
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 60px;
+            font-weight: bold;
+        }
+
+        .dateInfo span {
+            margin-left: 16px;
+            margin-right: 16px;
+        }
+
+        .hitokoto {
+            color: #838383;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        .content {
+            padding-top: 5px;
+            padding-left: 30px;
+            padding-right: 30px;
+        }
+
+        .signin {
+            color: #838383;
+            margin-top: 0px;
+            margin-bottom: 10px;
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        .levelInfo {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            font-size: 30px;
+            font-weight: bold;
+            white-space: nowrap;
+            align-items: baseline;
+        }
+
+        .level-bar {
+            margin-top: 0px;
+            display: flex;
+            align-items: center;
+        }
+
+        .level-bar .bar-container {
+            width: 100%;
+            background: #e0e0e0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .level-bar .progress {
+            background: #666666;
+            padding: 5px 0;
+            border-radius: 5px 0 0 5px;
+            height: 18px;
+            text-align: center;
+            color: #fff;
+        }
+
+        .fortune {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            margin-right: 5px;
+        }
+
+        .toDo {
+            display: flex;
+            flex-direction: row;
+            margin-top: 18px;
+            align-items: center;
+        }
+
+        .toDo p {
+            margin-top: 0px;
+            margin-bottom: 0px;
+            margin-left: 20px;
+            font-size: 20px;
+            font-weight: 500;
+            color: #434343;
+        }
+
+        .toDoBg {
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .toDoBg span {
+            font-size: 32px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .credit {
+            margin-top: 5px;
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+            padding: 10px;
+        }
+    </style>
+</head>
