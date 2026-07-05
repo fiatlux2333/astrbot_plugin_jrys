@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+
+# 运行时缓存（字体自动下载、HTML/图片缓存）
+cache/
+*.tmp
+
+# 用户数据（本地签到记录）
+data/
+jrys_data.json
+
+# 开发环境
+.env
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统
+.DS_Store
+Thumbs.db

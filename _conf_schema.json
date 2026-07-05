@@ -1,0 +1,61 @@
+{
+  "background_url": {
+    "description": "背景图 URL、本地图片路径或本地图片目录",
+    "type": "string",
+    "hint": "支持 http/https 图片 API；也支持相对插件目录的路径，例如 assets/default_background.jpg。目录会随机抽取图片。",
+    "default": "assets/default_background.jpg"
+  },
+  "browser_executable_path": {
+    "description": "Chromium/Chrome 可执行文件路径",
+    "type": "string",
+    "hint": "可留空使用 Playwright 默认浏览器；如果容器没有安装 Playwright 浏览器，请填写 /usr/bin/chromium、/usr/bin/google-chrome 等路径。",
+    "default": ""
+  },
+  "enable_hitokoto": {
+    "description": "是否启用随机一言",
+    "type": "bool",
+    "hint": "启用后会请求 hitokoto_api；网络失败时自动使用本地文案。",
+    "default": true
+  },
+  "hitokoto_api": {
+    "description": "随机一言 API",
+    "type": "string",
+    "hint": "兼容 v1.hitokoto.cn 返回格式。",
+    "default": "https://v1.hitokoto.cn/?c=a&c=b&c=k"
+  },
+  "send_text_fallback": {
+    "description": "图片生成失败时是否发送纯文本结果",
+    "type": "bool",
+    "default": true
+  },
+  "sign_exp_min": {
+    "description": "签到获得经验最小值",
+    "type": "int",
+    "hint": "如果最大值小于最小值，插件会自动交换两者。",
+    "default": 1
+  },
+  "sign_exp_max": {
+    "description": "签到获得经验最大值",
+    "type": "int",
+    "hint": "奖励会受当日运势影响，高运势更容易接近最大值。",
+    "default": 100
+  },
+  "sign_coin_min": {
+    "description": "签到获得货币最小值",
+    "type": "int",
+    "hint": "这是插件内部累计显示的货币，不会写入其他经济插件。",
+    "default": 1
+  },
+  "sign_coin_max": {
+    "description": "签到获得货币最大值",
+    "type": "int",
+    "hint": "奖励会受当日运势影响，高运势更容易接近最大值。",
+    "default": 100
+  },
+  "currency": {
+    "description": "本插件内显示和累计的货币名称",
+    "type": "string",
+    "hint": "仅用于消息展示和本插件 JSON 数据。",
+    "default": "coin"
+  }
+}
