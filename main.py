@@ -1,13 +1,9 @@
 import asyncio
 import hashlib
 import html
-import io
 import json
 import math
-import os
-import platform
 import random
-import urllib.request
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Optional
@@ -18,7 +14,9 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
 
-PLUGIN_NAME = "astrbot_plugin_jrys_fix"
+PLUGIN_NAME = "astrbot_plugin_jrys"
+# 旧插件名（曾用 _fix 后缀），用于一次性迁移历史签到数据
+LEGACY_PLUGIN_NAME = "astrbot_plugin_jrys_fix"
 SEED_MOD = 1_000_000_001
 CARD_WIDTH = 600
 VIEWPORT_HEIGHT = 2160
@@ -177,12 +175,6 @@ def is_url(value: str) -> bool:
     return value.startswith("http://") or value.startswith("https://")
 
 
-def fetch_bytes(url: str, timeout: int = 8) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "AstrBot-JRYS/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        return response.read()
-
-
 def escape(value: Any) -> str:
     return html.escape(str(value), quote=True)
 
@@ -211,6 +203,11 @@ class JrysFix(Star):
         self.cache_dir = self.data_dir / "cache"
         self.data_file = self.data_dir / "jrys_data.json"
         self.user_data: dict[str, dict[str, Any]] = {}
+        # 并发保护：签到读改写共享数据；浏览器实例复用
+        self._data_lock = asyncio.Lock()
+        self._browser_lock = asyncio.Lock()
+        self._playwright = None
+        self._browser = None
 
     def config_int(self, key: str, default: int) -> int:
         try:
@@ -227,12 +224,40 @@ class JrysFix(Star):
 
     async def initialize(self):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cleanup_cache()
+        self.migrate_legacy_data()
         await self.ensure_fonts()
         self.user_data = self.load_data()
         logger.info(f"{PLUGIN_NAME} initialized, loaded {len(self.user_data)} users.")
 
     async def terminate(self):
         self.save_data()
+        await self.close_browser()
+
+    def cleanup_cache(self):
+        """清理非当天的 HTML/PNG 渲染缓存，避免磁盘无限增长。"""
+        today = date.today().isoformat()
+        for path in self.cache_dir.glob("jrys_*"):
+            if today not in path.name:
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+
+    def migrate_legacy_data(self):
+        """一次性迁移旧插件名（astrbot_plugin_jrys_fix）目录下的历史签到数据。"""
+        if self.data_file.exists():
+            return
+        legacy_dir = self.data_dir.parent / LEGACY_PLUGIN_NAME
+        legacy_file = legacy_dir / "jrys_data.json"
+        if legacy_dir == self.data_dir or not legacy_file.exists():
+            return
+        try:
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            self.data_file.write_text(legacy_file.read_text(encoding="utf-8"), encoding="utf-8")
+            logger.info(f"已迁移旧签到数据：{legacy_file} → {self.data_file}")
+        except Exception as exc:
+            logger.error(f"迁移旧签到数据失败：{exc}")
 
     def load_data(self) -> dict[str, dict[str, Any]]:
         if not self.data_file.exists():
@@ -347,14 +372,21 @@ class JrysFix(Star):
             return f"https://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=100"
         return (plugin_dir() / "assets" / "default_avatar.png").resolve().as_uri()
 
-    def get_hitokoto(self) -> str:
+    async def get_hitokoto(self) -> str:
         if not self.enable_hitokoto or not self.hitokoto_api:
             return "『 随机生成，请勿迷信。』"
         try:
-            payload = json.loads(fetch_bytes(self.hitokoto_api, timeout=5).decode("utf-8"))
-            text = payload.get("hitokoto") or "随机生成，请勿迷信。"
-            source = payload.get("from") or ""
-            who = payload.get("from_who") or ""
+            import aiohttp
+
+            timeout = aiohttp.ClientTimeout(total=5)
+            headers = {"User-Agent": "AstrBot-JRYS/1.0"}
+            async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
+                async with session.get(self.hitokoto_api) as resp:
+                    payload = await resp.json(content_type=None)
+            # 外部接口返回内容不可信，转义后再拼入 HTML，避免注入。
+            text = escape(payload.get("hitokoto") or "随机生成，请勿迷信。")
+            source = escape(payload.get("from") or "")
+            who = escape(payload.get("from_who") or "")
             author = f"{who}《{source}》" if who and source else who or source
             return f"『{text}』<br>—— {author}" if author else f"『{text}』"
         except Exception as exc:
@@ -419,31 +451,32 @@ class JrysFix(Star):
 
     async def signin_user(self, uid: str, username: str) -> dict[str, Any]:
         today = date.today().isoformat()
-        user = self.user_data.setdefault(
-            uid,
-            {"name": username, "last_signin": "", "exp": 0, "coin": 0, "signin_count": 0},
-        )
-        if user.get("last_signin") == today:
-            return {"status": 1}
-        luck = self.get_fortune(uid)
-        exp_gain = self.random_with_luck(self.sign_exp_min, self.sign_exp_max, luck)
-        coin_gain = self.random_with_luck(self.sign_coin_min, self.sign_coin_max, luck)
-        user["name"] = username
-        user["last_signin"] = today
-        user["exp"] = int(user.get("exp", 0)) + exp_gain
-        user["coin"] = int(user.get("coin", 0)) + coin_gain
-        user["signin_count"] = int(user.get("signin_count", 0)) + 1
-        self.save_data()
-        return {
-            "status": 0,
-            "exp_gain": exp_gain,
-            "coin_gain": coin_gain,
-            "total_exp": user["exp"],
-            "total_coin": user["coin"],
-            "signin_count": user["signin_count"],
-        }
+        async with self._data_lock:
+            user = self.user_data.setdefault(
+                uid,
+                {"name": username, "last_signin": "", "exp": 0, "coin": 0, "signin_count": 0},
+            )
+            if user.get("last_signin") == today:
+                return {"status": 1}
+            luck = self.get_fortune(uid)
+            exp_gain = self.random_with_luck(self.sign_exp_min, self.sign_exp_max, luck)
+            coin_gain = self.random_with_luck(self.sign_coin_min, self.sign_coin_max, luck)
+            user["name"] = username
+            user["last_signin"] = today
+            user["exp"] = int(user.get("exp", 0)) + exp_gain
+            user["coin"] = int(user.get("coin", 0)) + coin_gain
+            user["signin_count"] = int(user.get("signin_count", 0)) + 1
+            self.save_data()
+            return {
+                "status": 0,
+                "exp_gain": exp_gain,
+                "coin_gain": coin_gain,
+                "total_exp": user["exp"],
+                "total_coin": user["coin"],
+                "signin_count": user["signin_count"],
+            }
 
-    def collect_view_model(self, event: AstrMessageEvent, uid: str, username: str, signin_result: dict[str, Any]) -> dict[str, Any]:
+    def collect_view_model(self, event: AstrMessageEvent, uid: str, username: str, signin_result: dict[str, Any], hitokoto: str = "") -> dict[str, Any]:
         luck = self.get_fortune(uid)
         user = self.user_data.get(uid, {})
         total_exp = int(signin_result.get("total_exp", user.get("exp", 0)))
@@ -475,7 +508,7 @@ class JrysFix(Star):
             "fortune_desc": self.get_fortune_desc(luck),
             "good_events": events[:2],
             "bad_events": events[2:],
-            "hitokoto": self.get_hitokoto(),
+            "hitokoto": hitokoto or "『 随机生成，请勿迷信。』",
             "background": self.image_source_to_uri(self.background_url),
             "avatar": self.get_avatar_url(event),
         }
@@ -491,7 +524,8 @@ class JrysFix(Star):
         baddo = "<br>".join(
             f"{escape(item['name'])}——{escape(item['bad'])}" for item in view["bad_events"]
         )
-        hitokoto = view["hitokoto"] if "<br>" in view["hitokoto"] else escape(view["hitokoto"])
+        # hitokoto 已在 get_hitokoto() 中转义，此处直接插入（仅含受控的 <br>）
+        hitokoto = view["hitokoto"]
         return f'''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -566,38 +600,74 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
 </body>
 </html>'''
 
-    async def render_card(self, view: dict[str, Any]) -> Path:
+    async def get_browser(self):
+        """获取（并按需懒启动）复用的 Chromium 实例。"""
         try:
             from playwright.async_api import async_playwright
         except ImportError as exc:
             raise RuntimeError("缺少 playwright 依赖，请确认 requirements.txt 已安装。") from exc
 
+        async with self._browser_lock:
+            if self._browser is not None and self._browser.is_connected():
+                return self._browser
+            if self._playwright is None:
+                self._playwright = await async_playwright().start()
+            launch_args: dict[str, Any] = {
+                "headless": True,
+                "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+            }
+            if self.browser_executable_path:
+                launch_args["executable_path"] = self.browser_executable_path
+            self._browser = await self._playwright.chromium.launch(**launch_args)
+            return self._browser
+
+    async def close_browser(self):
+        """关闭复用的浏览器与 playwright，供 terminate 或异常重置调用。"""
+        async with self._browser_lock:
+            if self._browser is not None:
+                try:
+                    await self._browser.close()
+                except Exception:
+                    pass
+                self._browser = None
+            if self._playwright is not None:
+                try:
+                    await self._playwright.stop()
+                except Exception:
+                    pass
+                self._playwright = None
+
+    async def render_card(self, view: dict[str, Any]) -> Path:
         html_text = self.build_html(view)
         digest = hashlib.md5(html_text.encode("utf-8")).hexdigest()[:10]
         html_path = self.cache_dir / f"jrys_{date.today().isoformat()}_{digest}.html"
         image_path = self.cache_dir / f"jrys_{date.today().isoformat()}_{digest}.png"
         html_path.write_text(html_text, encoding="utf-8")
 
-        launch_args: dict[str, Any] = {"headless": True, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
-        if self.browser_executable_path:
-            launch_args["executable_path"] = self.browser_executable_path
-
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(**launch_args)
-            page = await browser.new_page(viewport={"width": CARD_WIDTH, "height": VIEWPORT_HEIGHT}, device_scale_factor=1)
-            await page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
-            await page.locator("#body").screenshot(path=str(image_path), type="png")
-            await browser.close()
+        try:
+            browser = await self.get_browser()
+            page = await browser.new_page(
+                viewport={"width": CARD_WIDTH, "height": VIEWPORT_HEIGHT},
+                device_scale_factor=1,
+            )
+            try:
+                await page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
+                await page.locator("#body").screenshot(path=str(image_path), type="png")
+            finally:
+                await page.close()
+        except Exception:
+            # 浏览器可能已崩溃，重置以便下次重新启动
+            await self.close_browser()
+            raise
         return image_path
 
-    def build_message(self, uid: str, username: str, signin_result: dict[str, Any]) -> str:
-        view = self.collect_view_model(None, uid, username, signin_result)
+    def build_message(self, view: dict[str, Any]) -> str:
         status = "今天已经签到过了哦。" if view["signed_today"] else f"签到成功！经验 +{view['exp_gain']}，{self.currency} +{view['coin_gain']}。"
         good_text = "\n".join(f"{item['name']}：{item['good']}" for item in view["good_events"])
         bad_text = "\n".join(f"{item['name']}：{item['bad']}" for item in view["bad_events"])
         return f"""今日运势
 
-{view['greeting']} {username}！ {view['date']}
+{view['greeting']} {view['username']}！ {view['date']}
 {status}
 等级：{view['level']['levelName']} ({view['exp_text']})
 今日运势：{view['luck']}
@@ -618,14 +688,15 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
             uid = str(event.get_sender_id())
             username = event.get_sender_name() or f"用户{uid[-4:]}"
             signin_result = await self.signin_user(uid, username)
-            view = await asyncio.to_thread(self.collect_view_model, event, uid, username, signin_result)
+            hitokoto = await self.get_hitokoto()
+            view = await asyncio.to_thread(self.collect_view_model, event, uid, username, signin_result, hitokoto)
             try:
                 image_path = await self.render_card(view)
                 yield event.chain_result([Comp.Image.fromFileSystem(str(image_path))])
             except Exception as image_exc:
                 logger.error(f"Failed to render jrys card: {image_exc}")
                 if self.send_text_fallback:
-                    yield event.plain_result(self.build_message(uid, username, signin_result))
+                    yield event.plain_result(self.build_message(view))
                 else:
                     yield event.plain_result("运势图片生成失败，请检查 Playwright/Chromium 或 browser_executable_path 配置。")
         except Exception as exc:

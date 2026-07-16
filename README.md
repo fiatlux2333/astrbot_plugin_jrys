@@ -1,4 +1,4 @@
-# 今日运势签到 (astrbot_plugin_jrys_fix)
+# 今日运势签到 (astrbot_plugin_jrys)
 
 ✨ 基于 AstrBot 的一个插件 ✨
 
@@ -15,7 +15,7 @@
 ### 通过 AstrBot 插件市场安装（推荐）
 
 1. 在 AstrBot WebUI 中打开插件市场
-2. 搜索 `astrbot_plugin_jrys_fix` 或 `今日运势签到`
+2. 搜索 `astrbot_plugin_jrys` 或 `今日运势签到`
 3. 点击安装
 
 ### 手动安装
@@ -24,7 +24,7 @@
 
 ```
 cd AstrBot/data/plugins
-git clone https://github.com/yourname/astrbot_plugin_jrys_fix
+git clone https://github.com/fiatlux2333/astrbot_plugin_jrys
 ```
 
 2. 安装依赖（AstrBot 会自动根据 `requirements.txt` 安装 Python 包）：
@@ -69,13 +69,13 @@ playwright install chromium
 | `background_url` | str | `assets/default_background.jpg` | 签到卡片背景图 URL、本地图片路径或本地图片目录（随机选图） |
 | `browser_executable_path` | str | `""` | Chromium/Chrome 可执行文件路径，留空则使用 Playwright 自带浏览器 |
 | `enable_hitokoto` | bool | `true` | 是否启用随机一言（来自 hitokoto.cn） |
-| `hitokoto_api` | str | `https://v1.hitokoto.cn/` | 一言 API 地址 |
+| `hitokoto_api` | str | `https://v1.hitokoto.cn/?c=a&c=b&c=k` | 一言 API 地址 |
 | `send_text_fallback` | bool | `true` | 图片生成失败时是否发送纯文本回退消息 |
-| `sign_exp_min` | int | `50` | 签到获得经验最小值 |
+| `sign_exp_min` | int | `1` | 签到获得经验最小值 |
 | `sign_exp_max` | int | `100` | 签到获得经验最大值 |
-| `sign_coin_min` | int | `30` | 签到获得货币最小值 |
-| `sign_coin_max` | int | `80` | 签到获得货币最大值 |
-| `currency` | str | `星悦石` | 插件内货币名称（显示在签到卡片和消息中） |
+| `sign_coin_min` | int | `1` | 签到获得货币最小值 |
+| `sign_coin_max` | int | `100` | 签到获得货币最大值 |
+| `currency` | str | `coin` | 插件内货币名称（显示在签到卡片和消息中） |
 
 ## 🎁 使用
 
@@ -97,6 +97,7 @@ playwright install chromium
 ## 📋 依赖
 
 - `playwright>=1.45.0` - 浏览器自动化，用于 HTML 转图片
+- `aiohttp>=3.8.0` - 异步获取随机一言（AstrBot 已内置，通常无需单独安装）
 
 安装 Playwright 浏览器：
 
@@ -117,7 +118,7 @@ playwright install chromium
 
 1. **Playwright 浏览器**：图片渲染依赖 Chromium，若 `playwright install chromium` 后仍有问题，请在配置中填写 `browser_executable_path`
 2. **一言 API**：默认使用 `https://v1.hitokoto.cn/`，若网络无法访问可在配置中更换为其他一言 API 或关闭 `enable_hitokoto`
-3. **数据持久化**：用户数据存放在 `AstrBot/data/astrbot_plugin_jrys_fix/jrys_data.json`，请勿手动编辑
+3. **数据持久化**：用户数据存放在 `AstrBot/data/astrbot_plugin_jrys/jrys_data.json`，请勿手动编辑
 4. **等级配置**：等级名称、经验阈值和颜色在 `main.py` 的 `DEFAULT_LEVELS` 中定义，可根据需要修改
 5. **运势配置**：运势描述、宜忌事件在 `main.py` 的 `DEFAULT_FORTUNES` 和 `DEFAULT_EVENTS` 中定义，可根据需要修改
 
