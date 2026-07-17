@@ -7,14 +7,13 @@ import math
 import random
 from datetime import date, datetime, time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
-
 
 PLUGIN_NAME = "astrbot_plugin_jrys"
 # 旧插件名（曾用 _fix 后缀），用于一次性迁移历史签到数据
@@ -52,23 +51,78 @@ DEFAULT_LEVELS = [
     {"level": 1, "levelExp": 500, "levelName": "荒野漫步者", "levelColor": "#838383"},
     {"level": 2, "levelExp": 1000, "levelName": "拓荒者", "levelColor": "#838383"},
     {"level": 3, "levelExp": 1500, "levelName": "冒险家", "levelColor": "#838383"},
-    {"level": 4, "levelExp": 2000, "levelName": "传说的冒险家", "levelColor": "#000000"},
+    {
+        "level": 4,
+        "levelExp": 2000,
+        "levelName": "传说的冒险家",
+        "levelColor": "#000000",
+    },
     {"level": 5, "levelExp": 3000, "levelName": "隐秘收藏家", "levelColor": "#000000"},
     {"level": 6, "levelExp": 4000, "levelName": "言灵探索者", "levelColor": "#42bc05"},
     {"level": 7, "levelExp": 5000, "levelName": "水系魔法师", "levelColor": "#42bc05"},
     {"level": 8, "levelExp": 6000, "levelName": "水系魔导师", "levelColor": "#42bc05"},
     {"level": 9, "levelExp": 8000, "levelName": "藏书的魔女", "levelColor": "#2003da"},
-    {"level": 10, "levelExp": 10000, "levelName": "人形图书馆", "levelColor": "#2003da"},
-    {"level": 11, "levelExp": 15000, "levelName": "文明归档员", "levelColor": "#2003da"},
-    {"level": 12, "levelExp": 20000, "levelName": "高塔思索者", "levelColor": "#03a4da"},
-    {"level": 13, "levelExp": 25000, "levelName": "未知探索者", "levelColor": "#03a4da"},
-    {"level": 14, "levelExp": 30000, "levelName": "背负真相之人", "levelColor": "#9d03da"},
+    {
+        "level": 10,
+        "levelExp": 10000,
+        "levelName": "人形图书馆",
+        "levelColor": "#2003da",
+    },
+    {
+        "level": 11,
+        "levelExp": 15000,
+        "levelName": "文明归档员",
+        "levelColor": "#2003da",
+    },
+    {
+        "level": 12,
+        "levelExp": 20000,
+        "levelName": "高塔思索者",
+        "levelColor": "#03a4da",
+    },
+    {
+        "level": 13,
+        "levelExp": 25000,
+        "levelName": "未知探索者",
+        "levelColor": "#03a4da",
+    },
+    {
+        "level": 14,
+        "levelExp": 30000,
+        "levelName": "背负真相之人",
+        "levelColor": "#9d03da",
+    },
     {"level": 15, "levelExp": 35000, "levelName": "守密人", "levelColor": "#9d03da"},
-    {"level": 16, "levelExp": 40000, "levelName": "被缚的倒吊者", "levelColor": "#9d03da"},
-    {"level": 17, "levelExp": 45000, "levelName": "崩毁世界之人", "levelColor": "#f10171"},
-    {"level": 18, "levelExp": 50000, "levelName": "命运眷顾者", "levelColor": "#f10171"},
-    {"level": 19, "levelExp": 100000, "levelName": "文明领航员", "levelColor": "#c9b86d"},
-    {"level": 20, "levelExp": 1000000, "levelName": "天选之人", "levelColor": "#ffd000"},
+    {
+        "level": 16,
+        "levelExp": 40000,
+        "levelName": "被缚的倒吊者",
+        "levelColor": "#9d03da",
+    },
+    {
+        "level": 17,
+        "levelExp": 45000,
+        "levelName": "崩毁世界之人",
+        "levelColor": "#f10171",
+    },
+    {
+        "level": 18,
+        "levelExp": 50000,
+        "levelName": "命运眷顾者",
+        "levelColor": "#f10171",
+    },
+    {
+        "level": 19,
+        "levelExp": 100000,
+        "levelName": "文明领航员",
+        "levelColor": "#c9b86d",
+    },
+    {
+        "level": 20,
+        "levelExp": 1000000,
+        "levelName": "天选之人",
+        "levelColor": "#ffd000",
+    },
 ]
 
 DEFAULT_FORTUNES = [
@@ -111,7 +165,11 @@ DEFAULT_EVENTS = [
     {"name": "重构", "good": "代码质量得到提高", "bad": "很可能陷入泥潭"},
     {"name": "面试", "good": "面试官今天心情很好", "bad": "面试官不爽，会拿你出气"},
     {"name": "提交代码", "good": "遇到冲突的几率最低", "bad": "会遇到一大堆冲突"},
-    {"name": "代码复审", "good": "发现重要问题的几率大大增加", "bad": "你什么问题都发现不了"},
+    {
+        "name": "代码复审",
+        "good": "发现重要问题的几率大大增加",
+        "bad": "你什么问题都发现不了",
+    },
     {"name": "晚上上线", "good": "晚上是精神最好的时候", "bad": "你白天已经筋疲力尽了"},
     {"name": "氪金", "good": "早买早享受", "bad": "第二天就 50% off"},
     {"name": "挑战高难", "good": "一上来就是新纪录", "bad": "先热手比较好"},
@@ -188,7 +246,7 @@ def shorten(value: str, limit: int) -> str:
 
 @register(PLUGIN_NAME, "Miku", "今日运势签到插件 - AstrBot 版")
 class JrysFix(Star):
-    def __init__(self, context: Context, config: Optional[AstrBotConfig] = None):
+    def __init__(self, context: Context, config: AstrBotConfig | None = None):
         super().__init__(context)
         self.config = config or {}
         self.sign_exp_min = self.config_int("sign_exp_min", 1)
@@ -196,7 +254,9 @@ class JrysFix(Star):
         self.sign_coin_min = self.config_int("sign_coin_min", 1)
         self.sign_coin_max = self.config_int("sign_coin_max", 100)
         self.currency = str(self.config.get("currency", "coin"))
-        self.background_url = str(self.config.get("background_url", "assets/default_background.jpg")).strip()
+        self.background_url = str(
+            self.config.get("background_url", "assets/default_background.jpg")
+        ).strip()
         self.enable_hitokoto = self.config_bool("enable_hitokoto", True)
         default_hitokoto_api = "https://v1.hitokoto.cn/?c=a&c=b&c=k"
         self.hitokoto_api = self._validate_http_url(
@@ -205,7 +265,9 @@ class JrysFix(Star):
             default_hitokoto_api,
         )
         self.send_text_fallback = self.config_bool("send_text_fallback", True)
-        self.browser_executable_path = str(self.config.get("browser_executable_path", "")).strip()
+        self.browser_executable_path = str(
+            self.config.get("browser_executable_path", "")
+        ).strip()
         self.data_dir = plugin_data_dir()
         self.cache_dir = self.data_dir / "cache"
         self.data_file = self.data_dir / "jrys_data.json"
@@ -242,8 +304,15 @@ class JrysFix(Star):
         if host:
             try:
                 ip = ipaddress.ip_address(host)
-                if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
-                    logger.warning(f"配置 {key} 指向内网地址 {host},已拒绝,回退默认值。")
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_reserved
+                    or ip.is_link_local
+                ):
+                    logger.warning(
+                        f"配置 {key} 指向内网地址 {host},已拒绝,回退默认值。"
+                    )
                     return default
             except ValueError:
                 # 域名,放行
@@ -282,7 +351,9 @@ class JrysFix(Star):
             return
         try:
             self.data_dir.mkdir(parents=True, exist_ok=True)
-            self.data_file.write_text(legacy_file.read_text(encoding="utf-8"), encoding="utf-8")
+            self.data_file.write_text(
+                legacy_file.read_text(encoding="utf-8"), encoding="utf-8"
+            )
             logger.info(f"已迁移旧签到数据：{legacy_file} → {self.data_file}")
         except Exception as exc:
             logger.error(f"迁移旧签到数据失败：{exc}")
@@ -299,7 +370,9 @@ class JrysFix(Star):
     def save_data(self):
         self.data_dir.mkdir(parents=True, exist_ok=True)
         tmp_file = self.data_file.with_suffix(".tmp")
-        tmp_file.write_text(json.dumps(self.user_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp_file.write_text(
+            json.dumps(self.user_data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         tmp_file.replace(self.data_file)
 
     async def ensure_fonts(self):
@@ -320,11 +393,13 @@ class JrysFix(Star):
                         "中文可能无法正常显示。"
                     )
                 else:
-                    logger.debug(f"字体文件未找到：{filename}（emoji 已改用内置 SVG，可忽略此警告）")
+                    logger.debug(
+                        f"字体文件未找到：{filename}（emoji 已改用内置 SVG，可忽略此警告）"
+                    )
             else:
                 logger.info(f"字体已找到：{filename} → {resolved}")
 
-    def resolve_font(self, filename: str) -> Optional[Path]:
+    def resolve_font(self, filename: str) -> Path | None:
         """查找字体文件：cache > 系统路径 > assets。返回 Path 或 None。"""
         # 1) cache 目录（之前下载的）
         cached = self.cache_dir / filename
@@ -368,7 +443,11 @@ class JrysFix(Star):
             return source
         path = self.resolve_local_path(source)
         if path.is_dir():
-            images = [p for p in path.iterdir() if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}]
+            images = [
+                p
+                for p in path.iterdir()
+                if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
+            ]
             if images:
                 path = random.choice(images)
         if not path.exists():
@@ -414,7 +493,9 @@ class JrysFix(Star):
 
             timeout = aiohttp.ClientTimeout(total=5)
             headers = {"User-Agent": "AstrBot-JRYS/1.0"}
-            async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
+            async with aiohttp.ClientSession(
+                headers=headers, timeout=timeout
+            ) as session:
                 async with session.get(self.hitokoto_api) as resp:
                     payload = await resp.json(content_type=None)
             # 外部接口返回内容不可信，转义后再拼入 HTML，避免注入。
@@ -463,13 +544,17 @@ class JrysFix(Star):
         value = max(0, min(1, value))
         return round(value * (high - low) + low)
 
-    def get_level_info(self, exp: int) -> tuple[dict[str, Any], Optional[int]]:
+    def get_level_info(self, exp: int) -> tuple[dict[str, Any], int | None]:
         current = DEFAULT_LEVELS[0]
-        next_exp: Optional[int] = None
+        next_exp: int | None = None
         for index, level in enumerate(DEFAULT_LEVELS):
             if exp >= level["levelExp"]:
                 current = level
-                next_exp = DEFAULT_LEVELS[index + 1]["levelExp"] if index + 1 < len(DEFAULT_LEVELS) else None
+                next_exp = (
+                    DEFAULT_LEVELS[index + 1]["levelExp"]
+                    if index + 1 < len(DEFAULT_LEVELS)
+                    else None
+                )
             else:
                 break
         return current, next_exp
@@ -488,13 +573,21 @@ class JrysFix(Star):
         async with self._data_lock:
             user = self.user_data.setdefault(
                 uid,
-                {"name": username, "last_signin": "", "exp": 0, "coin": 0, "signin_count": 0},
+                {
+                    "name": username,
+                    "last_signin": "",
+                    "exp": 0,
+                    "coin": 0,
+                    "signin_count": 0,
+                },
             )
             if user.get("last_signin") == today:
                 return {"status": 1}
             luck = self.get_fortune(uid)
             exp_gain = self.random_with_luck(self.sign_exp_min, self.sign_exp_max, luck)
-            coin_gain = self.random_with_luck(self.sign_coin_min, self.sign_coin_max, luck)
+            coin_gain = self.random_with_luck(
+                self.sign_coin_min, self.sign_coin_max, luck
+            )
             user["name"] = username
             user["last_signin"] = today
             user["exp"] = int(user.get("exp", 0)) + exp_gain
@@ -510,12 +603,21 @@ class JrysFix(Star):
                 "signin_count": user["signin_count"],
             }
 
-    def collect_view_model(self, event: AstrMessageEvent, uid: str, username: str, signin_result: dict[str, Any], hitokoto: str = "") -> dict[str, Any]:
+    def collect_view_model(
+        self,
+        event: AstrMessageEvent,
+        uid: str,
+        username: str,
+        signin_result: dict[str, Any],
+        hitokoto: str = "",
+    ) -> dict[str, Any]:
         luck = self.get_fortune(uid)
         user = self.user_data.get(uid, {})
         total_exp = int(signin_result.get("total_exp", user.get("exp", 0)))
         total_coin = int(signin_result.get("total_coin", user.get("coin", 0)))
-        signin_count = int(signin_result.get("signin_count", user.get("signin_count", 0)))
+        signin_count = int(
+            signin_result.get("signin_count", user.get("signin_count", 0))
+        )
         level, next_exp = self.get_level_info(total_exp)
         if next_exp is None:
             exp_text = f"{total_exp}/???"
@@ -551,24 +653,30 @@ class JrysFix(Star):
     def build_html(self, view: dict[str, Any]) -> str:
         status = "今天已经签到过了哦" if view["signed_today"] else "签到成功！"
         emoji_jelly = f'<img class="icon" src="{self.asset_uri("assets/emoji_1fae7.svg")}" alt="">'
-        emoji_coin  = f'<img class="icon" src="{self.asset_uri("assets/emoji_1fa99.svg")}" alt="">'
-        reward = f"{emoji_jelly}+{view['exp_gain']} {emoji_coin}+{view['coin_gain']}" if not view["signed_today"] else f"累计 {escape(self.currency)} {view['total_coin']}"
+        emoji_coin = f'<img class="icon" src="{self.asset_uri("assets/emoji_1fa99.svg")}" alt="">'
+        reward = (
+            f"{emoji_jelly}+{view['exp_gain']} {emoji_coin}+{view['coin_gain']}"
+            if not view["signed_today"]
+            else f"累计 {escape(self.currency)} {view['total_coin']}"
+        )
         gooddo = "<br>".join(
-            f"{escape(item['name'])}——{escape(item['good'])}" for item in view["good_events"]
+            f"{escape(item['name'])}——{escape(item['good'])}"
+            for item in view["good_events"]
         )
         baddo = "<br>".join(
-            f"{escape(item['name'])}——{escape(item['bad'])}" for item in view["bad_events"]
+            f"{escape(item['name'])}——{escape(item['bad'])}"
+            for item in view["bad_events"]
         )
         # hitokoto 已在 get_hitokoto() 中转义，此处直接插入（仅含受控的 <br>）
         hitokoto = view["hitokoto"]
-        return f'''<!DOCTYPE html>
+        return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>运势签到</title>
 <style>
-@font-face {{ font-family: 'osans4'; src: url("{self.font_uri('osans4.subset.woff2')}") format("woff2"); }}
+@font-face {{ font-family: 'osans4'; src: url("{self.font_uri("osans4.subset.woff2")}") format("woff2"); }}
 * {{ box-sizing: border-box; }}
 html, body {{ margin: 0; padding: 0; background: transparent; }}
 body {{ width: 600px; font-family: 'Noto Sans SC', osans4, 'WenQuanYi Zen Hei', 'Microsoft YaHei', Arial, sans-serif; }}
@@ -587,7 +695,7 @@ body {{ width: 600px; font-family: 'Noto Sans SC', osans4, 'WenQuanYi Zen Hei', 
 .levelInfo .exp {{ color: #b4b1b1; }}
 .level-bar {{ margin-top: 2px; display: flex; align-items: center; }}
 .bar-container {{ width: 100%; background: #e0e0e0; border-radius: 5px; overflow: hidden; }}
-.progress {{ width: {view['progress']}%; background: #666; padding: 5px 0; border-radius: 5px 0 0 5px; height: 29px; }}
+.progress {{ width: {view["progress"]}%; background: #666; padding: 5px 0; border-radius: 5px 0 0 5px; height: 29px; }}
 .fortune {{ display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-top: 10px; margin-right: 5px; }}
 .fortune .luck {{ font-size: 36px; font-weight: 800; color: #000; }}
 .fortune .desc {{ font-size: 28px; color: #838383; white-space: nowrap; font-weight: 600; }}
@@ -603,25 +711,25 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
 </head>
 <body id="body">
   <div class="container">
-    <img class="hero" src="{view['background']}" alt="background">
+    <img class="hero" src="{view["background"]}" alt="background">
     <div class="header">
-      <img class="avatar" src="{view['avatar']}" alt="avatar">
+      <img class="avatar" src="{view["avatar"]}" alt="avatar">
       <div class="dateInfo">
-        <span>{escape(view['greeting'])}</span>
-        <span class="date">{escape(view['date'])}</span>
+        <span>{escape(view["greeting"])}</span>
+        <span class="date">{escape(view["date"])}</span>
       </div>
     </div>
     <div class="hitokoto">{hitokoto}</div>
     <div class="content">
       <div class="signin">{status} {reward}</div>
       <div class="levelInfo">
-        <span style="color:{view['level']['levelColor']}">{escape(view['level']['levelName'])}</span>
-        <span class="exp">{escape(view['exp_text'])}</span>
+        <span style="color:{view["level"]["levelColor"]}">{escape(view["level"]["levelName"])}</span>
+        <span class="exp">{escape(view["exp_text"])}</span>
       </div>
       <div class="level-bar"><div class="bar-container"><div class="progress"></div></div></div>
       <div class="fortune">
-        <span class="luck">{self.emoji_svg('1f340')} {escape(view['luck'])}</span>
-        <span class="desc">{self.emoji_svg('1f320')} {escape(view['fortune_desc'])}</span>
+        <span class="luck">{self.emoji_svg("1f340")} {escape(view["luck"])}</span>
+        <span class="desc">{self.emoji_svg("1f320")} {escape(view["fortune_desc"])}</span>
       </div>
       <hr>
       <div class="toDo"><div class="toDoBg" style="background-color:#D94A3F;"><span>宜</span></div><p class="goodText">{gooddo}</p></div>
@@ -630,14 +738,16 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
     <div class="credit">随机生成 请勿迷信 | AstrBot</div>
   </div>
 </body>
-</html>'''
+</html>"""
 
     async def get_browser(self):
         """获取（并按需懒启动）复用的 Chromium 实例。"""
         try:
             from playwright.async_api import async_playwright
         except ImportError as exc:
-            raise RuntimeError("缺少 playwright 依赖，请确认 requirements.txt 已安装。") from exc
+            raise RuntimeError(
+                "缺少 playwright 依赖，请确认 requirements.txt 已安装。"
+            ) from exc
 
         async with self._browser_lock:
             if self._browser is not None and self._browser.is_connected():
@@ -696,7 +806,9 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
             try:
                 # domcontentloaded 快速就绪;再用短超时等网络空闲(如背景图/字体),
                 # 失败也不阻塞截图——离线/慢网环境下不再卡数十秒。
-                await page.goto(html_path.resolve().as_uri(), wait_until="domcontentloaded")
+                await page.goto(
+                    html_path.resolve().as_uri(), wait_until="domcontentloaded"
+                )
                 try:
                     await page.wait_for_load_state("networkidle", timeout=2000)
                 except Exception:
@@ -711,16 +823,24 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
         return image_path
 
     def build_message(self, view: dict[str, Any]) -> str:
-        status = "今天已经签到过了哦。" if view["signed_today"] else f"签到成功！经验 +{view['exp_gain']}，{self.currency} +{view['coin_gain']}。"
-        good_text = "\n".join(f"{item['name']}：{item['good']}" for item in view["good_events"])
-        bad_text = "\n".join(f"{item['name']}：{item['bad']}" for item in view["bad_events"])
+        status = (
+            "今天已经签到过了哦。"
+            if view["signed_today"]
+            else f"签到成功！经验 +{view['exp_gain']}，{self.currency} +{view['coin_gain']}。"
+        )
+        good_text = "\n".join(
+            f"{item['name']}：{item['good']}" for item in view["good_events"]
+        )
+        bad_text = "\n".join(
+            f"{item['name']}：{item['bad']}" for item in view["bad_events"]
+        )
         return f"""今日运势
 
-{view['greeting']} {view['username']}！ {view['date']}
+{view["greeting"]} {view["username"]}！ {view["date"]}
 {status}
-等级：{view['level']['levelName']} ({view['exp_text']})
-今日运势：{view['luck']}
-运势描述：{view['fortune_desc']}
+等级：{view["level"]["levelName"]} ({view["exp_text"]})
+今日运势：{view["luck"]}
+运势描述：{view["fortune_desc"]}
 
 宜：
 {good_text}
@@ -738,7 +858,9 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
             username = event.get_sender_name() or f"用户{uid[-4:]}"
             signin_result = await self.signin_user(uid, username)
             hitokoto = await self.get_hitokoto()
-            view = await asyncio.to_thread(self.collect_view_model, event, uid, username, signin_result, hitokoto)
+            view = await asyncio.to_thread(
+                self.collect_view_model, event, uid, username, signin_result, hitokoto
+            )
             try:
                 image_path = await self.render_card(view)
                 yield event.chain_result([Comp.Image.fromFileSystem(str(image_path))])
@@ -747,7 +869,9 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
                 if self.send_text_fallback:
                     yield event.plain_result(self.build_message(view))
                 else:
-                    yield event.plain_result("运势图片生成失败，请检查 Playwright/Chromium 或 browser_executable_path 配置。")
+                    yield event.plain_result(
+                        "运势图片生成失败，请检查 Playwright/Chromium 或 browser_executable_path 配置。"
+                    )
         except Exception as exc:
             logger.error(f"Failed to handle /jrys: {exc}")
             yield event.plain_result("签到失败，请稍后再试或联系管理员。")
