@@ -1,12 +1,14 @@
 import asyncio
 import hashlib
 import html
+import ipaddress
 import json
 import math
 import random
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
@@ -184,7 +186,7 @@ def shorten(value: str, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 1] + "..."
 
 
-@register(PLUGIN_NAME, "Miku", "今日运势签到插件 - AstrBot 版", "1.3.1")
+@register(PLUGIN_NAME, "Miku", "今日运势签到插件 - AstrBot 版")
 class JrysFix(Star):
     def __init__(self, context: Context, config: Optional[AstrBotConfig] = None):
         super().__init__(context)
@@ -196,7 +198,12 @@ class JrysFix(Star):
         self.currency = str(self.config.get("currency", "coin"))
         self.background_url = str(self.config.get("background_url", "assets/default_background.jpg")).strip()
         self.enable_hitokoto = self.config_bool("enable_hitokoto", True)
-        self.hitokoto_api = str(self.config.get("hitokoto_api", "https://v1.hitokoto.cn/?c=a&c=b&c=k")).strip()
+        default_hitokoto_api = "https://v1.hitokoto.cn/?c=a&c=b&c=k"
+        self.hitokoto_api = self._validate_http_url(
+            str(self.config.get("hitokoto_api", default_hitokoto_api)).strip(),
+            "hitokoto_api",
+            default_hitokoto_api,
+        )
         self.send_text_fallback = self.config_bool("send_text_fallback", True)
         self.browser_executable_path = str(self.config.get("browser_executable_path", "")).strip()
         self.data_dir = plugin_data_dir()
@@ -222,6 +229,27 @@ class JrysFix(Star):
             return value
         return str(value).lower() in {"1", "true", "yes", "on"}
 
+    @staticmethod
+    def _validate_http_url(url: str, key: str, default: str) -> str:
+        """校验 http/https URL 并拒绝指向内网/回环地址,防止 SSRF。"""
+        if not url:
+            return default
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"}:
+            logger.warning(f"配置 {key} 必须是 http/https URL,回退默认值。")
+            return default
+        host = parsed.hostname
+        if host:
+            try:
+                ip = ipaddress.ip_address(host)
+                if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                    logger.warning(f"配置 {key} 指向内网地址 {host},已拒绝,回退默认值。")
+                    return default
+            except ValueError:
+                # 域名,放行
+                pass
+        return url
+
     async def initialize(self):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.cleanup_cache()
@@ -231,7 +259,7 @@ class JrysFix(Star):
         logger.info(f"{PLUGIN_NAME} initialized, loaded {len(self.user_data)} users.")
 
     async def terminate(self):
-        self.save_data()
+        await asyncio.to_thread(self.save_data)
         await self.close_browser()
 
     def cleanup_cache(self):
@@ -363,12 +391,18 @@ class JrysFix(Star):
             value = getattr(sender, attr, None)
             if value:
                 return str(value)
+        # 仅 QQ 系平台使用 q1.qlogo.cn 兜底,避免在其他平台拿到无关 QQ 用户的头像。
         sender_id = ""
+        platform = ""
         try:
+            platform = str(event.get_platform_name())
             sender_id = str(event.get_sender_id())
         except Exception:
             sender_id = ""
-        if sender_id.isdigit():
+        if (
+            platform in {"aiocqhttp", "qq_official", "qq_official_webhook"}
+            and sender_id.isdigit()
+        ):
             return f"https://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=100"
         return (plugin_dir() / "assets" / "default_avatar.png").resolve().as_uri()
 
@@ -466,7 +500,7 @@ class JrysFix(Star):
             user["exp"] = int(user.get("exp", 0)) + exp_gain
             user["coin"] = int(user.get("coin", 0)) + coin_gain
             user["signin_count"] = int(user.get("signin_count", 0)) + 1
-            self.save_data()
+            await asyncio.to_thread(self.save_data)
             return {
                 "status": 0,
                 "exp_gain": exp_gain,
@@ -492,6 +526,7 @@ class JrysFix(Star):
         events = self.get_random_events(uid)
         now = datetime.now()
         return {
+            "uid": uid,
             "username": shorten(username, 13),
             "date": f"{now.month:02d}/{now.day:02d}",
             "greeting": get_greeting(now.hour),
@@ -532,9 +567,6 @@ class JrysFix(Star):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>运势签到</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 @font-face {{ font-family: 'osans4'; src: url("{self.font_uri('osans4.subset.woff2')}") format("woff2"); }}
 * {{ box-sizing: border-box; }}
@@ -640,8 +672,19 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
     async def render_card(self, view: dict[str, Any]) -> Path:
         html_text = self.build_html(view)
         digest = hashlib.md5(html_text.encode("utf-8")).hexdigest()[:10]
-        html_path = self.cache_dir / f"jrys_{date.today().isoformat()}_{digest}.html"
-        image_path = self.cache_dir / f"jrys_{date.today().isoformat()}_{digest}.png"
+        today = date.today().isoformat()
+        uid = view.get("uid", "anon")
+        html_path = self.cache_dir / f"jrys_{today}_{uid}_{digest}.html"
+        image_path = self.cache_dir / f"jrys_{today}_{uid}_{digest}.png"
+        # 缓存命中:今日已渲染过相同内容的卡片,直接返回,避免重复启动浏览器。
+        if image_path.exists():
+            return image_path
+        # 1% 概率清理非当天的旧缓存,避免长期运行磁盘膨胀。
+        if random.random() < 0.01:
+            try:
+                await asyncio.to_thread(self.cleanup_cache)
+            except Exception:
+                pass
         html_path.write_text(html_text, encoding="utf-8")
 
         try:
@@ -651,12 +694,18 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
                 device_scale_factor=1,
             )
             try:
-                await page.goto(html_path.resolve().as_uri(), wait_until="networkidle")
+                # domcontentloaded 快速就绪;再用短超时等网络空闲(如背景图/字体),
+                # 失败也不阻塞截图——离线/慢网环境下不再卡数十秒。
+                await page.goto(html_path.resolve().as_uri(), wait_until="domcontentloaded")
+                try:
+                    await page.wait_for_load_state("networkidle", timeout=2000)
+                except Exception:
+                    pass
                 await page.locator("#body").screenshot(path=str(image_path), type="png")
             finally:
                 await page.close()
         except Exception:
-            # 浏览器可能已崩溃，重置以便下次重新启动
+            # 浏览器可能已崩溃,重置以便下次重新启动
             await self.close_browser()
             raise
         return image_path
@@ -702,3 +751,5 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
         except Exception as exc:
             logger.error(f"Failed to handle /jrys: {exc}")
             yield event.plain_result("签到失败，请稍后再试或联系管理员。")
+        finally:
+            event.stop_event()

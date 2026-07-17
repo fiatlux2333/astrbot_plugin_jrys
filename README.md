@@ -143,7 +143,7 @@ playwright install chromium
 
 ## 📄 许可证
 
-本项目继承原插件的许可证，详见原项目仓库。
+本项目基于 [MIT License](./LICENSE) 开源,继承自原项目 [koishi-plugin-jrys-fix](https://github.com/CatKoishi/koishi-plugin-jrys-fix) 的许可证。
 
 ## ❤ 致谢
 
