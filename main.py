@@ -16,6 +16,10 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
 PLUGIN_NAME = "astrbot_plugin_jrys"
+# 以下常量需与 metadata.yaml 保持一致,避免版本/作者信息脱节。
+PLUGIN_AUTHOR = "fiatlux2333"
+PLUGIN_DESC = "今日运势签到插件 - AstrBot HTML 渲染版"
+PLUGIN_VERSION = "v1.3.1"
 # 旧插件名（曾用 _fix 后缀），用于一次性迁移历史签到数据
 LEGACY_PLUGIN_NAME = "astrbot_plugin_jrys_fix"
 SEED_MOD = 1_000_000_001
@@ -244,7 +248,12 @@ def shorten(value: str, limit: int) -> str:
     return value if len(value) <= limit else value[: limit - 1] + "..."
 
 
-@register(PLUGIN_NAME, "Miku", "今日运势签到插件 - AstrBot 版")
+@register(
+    PLUGIN_NAME,
+    PLUGIN_AUTHOR,
+    PLUGIN_DESC,
+    PLUGIN_VERSION,
+)
 class JrysFix(Star):
     def __init__(self, context: Context, config: AstrBotConfig | None = None):
         super().__init__(context)
