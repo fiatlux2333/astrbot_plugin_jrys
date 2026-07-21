@@ -10,6 +10,9 @@
 
 这是一个从 [koishi-plugin-jrys-fix](https://github.com/CatKoishi/koishi-plugin-jrys-fix) 移植到 AstrBot 的今日运势签到插件。插件使用 Playwright 渲染 HTML 并截图生成精美的签到卡片图片，包含等级成长、经验/货币奖励、每日宜忌事项与随机一言。
 
+<img width="600" height="888" alt="33e555bf305febe0b9a66e8b4eb8f783" src="https://github.com/user-attachments/assets/f0beba58-3725-4b5e-8ad9-0e6a1d7faf9e" />
+
+
 ## 💿 安装
 
 ### 通过 AstrBot 插件市场安装（推荐）
