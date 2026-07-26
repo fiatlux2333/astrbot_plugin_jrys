@@ -5,7 +5,7 @@ version: v1.3.1
 desc: 今日运势签到插件 - AstrBot HTML 渲染版
 short_desc: 使用浏览器截图复刻 Koishi jrys-fix 风格的图片运势签到。
 repo: "https://github.com/fiatlux2333/astrbot_plugin_jrys"
-usage: 发送 /jrys 查看今日运势并签到；可在配置中设置 background_url 为背景图 API 或本地图片路径。
+usage: 发送 /jrys 查看qq群今日运势并签到；可在配置中设置 background_url 为背景图 API 或本地图片路径。
 astrbot_version: ">=4.16,<5"
 support_platforms:
   - aiocqhttp
@@ -29,5 +29,5 @@ support_platforms:
   - mattermost
 commands:
   - name: jrys
-    desc: 查看今日运势并签到
+    desc: qq群查看今日运势并签到
     usage: /jrys
