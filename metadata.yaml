@@ -1,6 +1,6 @@
 name: astrbot_plugin_jrys
 display_name: 今日运势签到
-author: Miku
+author: 牡蛎
 version: v1.3.1
 desc: 今日运势签到插件 - AstrBot HTML 渲染版
 short_desc: 使用浏览器截图复刻 Koishi jrys-fix 风格的图片运势签到。
