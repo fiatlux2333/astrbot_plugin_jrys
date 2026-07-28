@@ -25,6 +25,7 @@ LEGACY_PLUGIN_NAME = "astrbot_plugin_jrys_fix"
 SEED_MOD = 1_000_000_001
 CARD_WIDTH = 600
 VIEWPORT_HEIGHT = 2160
+RENDER_CACHE_VERSION = 2
 
 # 字体文件 → 系统路径候选列表（按优先级，跨平台）
 # Debian/Ubuntu: apt install fonts-noto-cjk fonts-noto-color-emoji fonts-wqy-zenhei
@@ -790,7 +791,8 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
 
     async def render_card(self, view: dict[str, Any]) -> Path:
         html_text = self.build_html(view)
-        digest = hashlib.md5(html_text.encode("utf-8")).hexdigest()[:10]
+        digest_source = f"{RENDER_CACHE_VERSION}\0{html_text}"
+        digest = hashlib.md5(digest_source.encode("utf-8")).hexdigest()[:10]
         today = date.today().isoformat()
         uid = view.get("uid", "anon")
         html_path = self.cache_dir / f"jrys_{today}_{uid}_{digest}.html"
@@ -813,16 +815,40 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
                 device_scale_factor=1,
             )
             try:
-                # domcontentloaded 快速就绪;再用短超时等网络空闲(如背景图/字体),
-                # 失败也不阻塞截图——离线/慢网环境下不再卡数十秒。
                 await page.goto(
                     html_path.resolve().as_uri(), wait_until="domcontentloaded"
                 )
+
+                # domcontentloaded 不会等待图片下载。必须等背景完整解码后再截图，
+                # 否则慢速或渐进式 JPEG 可能只渲染一部分。
+                hero = page.locator(".hero")
+                decode_image = """async (image) => {
+                    await image.decode();
+                    if (!image.complete || image.naturalWidth === 0) {
+                        throw new Error("image failed to load");
+                    }
+                }"""
                 try:
-                    await page.wait_for_load_state("networkidle", timeout=2000)
-                except Exception:
-                    pass
-                await page.locator("#body").screenshot(path=str(image_path), type="png")
+                    await asyncio.wait_for(hero.evaluate(decode_image), timeout=15)
+                except Exception as exc:
+                    logger.warning(f"背景图加载失败，改用默认背景图：{exc}")
+                    await hero.evaluate(
+                        "(image, source) => { image.src = source; }",
+                        self.asset_uri("assets/default_background.jpg"),
+                    )
+                    await asyncio.wait_for(hero.evaluate(decode_image), timeout=5)
+
+                # 先写入唯一临时文件再原子替换，避免并发请求读到半写入 PNG。
+                temp_image_path = image_path.with_name(
+                    f".{image_path.stem}-{random.getrandbits(64):016x}.png"
+                )
+                try:
+                    await page.locator("#body").screenshot(
+                        path=str(temp_image_path), type="png"
+                    )
+                    temp_image_path.replace(image_path)
+                finally:
+                    temp_image_path.unlink(missing_ok=True)
             finally:
                 await page.close()
         except Exception:
