@@ -1,11 +1,16 @@
 name: astrbot_plugin_jrys
 display_name: 今日运势签到
+short_desc: 基于浏览器截图复刻 Koishi jrys-fix 风格的图片运势签到插件。
+desc: |
+  基于 AstrBot HTML 渲染引擎的今日运势签到插件，使用 Playwright 渲染 HTML 卡片并截图输出。
+  - 发送 `/jrys` 查看今日运势并完成签到
+  - 支持自定义背景图（远程 API 或本地图片路径）
+  - 支持多平台：QQ、Telegram、Discord、微信、飞书、钉钉等
+  - 自带防 SSRF 与 XSS 安全校验
+  - 签到数据本地持久化，次日重置
+version: 1.3.2
 author: 牡蛎
-version: v1.3.1
-desc: 今日运势签到插件 - AstrBot HTML 渲染版
-short_desc: 使用浏览器截图复刻 Koishi jrys-fix 风格的图片运势签到。
-repo: "https://github.com/fiatlux2333/astrbot_plugin_jrys"
-usage: 发送 /jrys 查看qq群今日运势并签到；可在配置中设置 background_url 为背景图 API 或本地图片路径。
+repo: https://github.com/fiatlux2333/astrbot_plugin_jrys
 astrbot_version: ">=4.16,<5"
 support_platforms:
   - aiocqhttp
@@ -27,7 +32,10 @@ support_platforms:
   - line
   - matrix
   - mattermost
-commands:
-  - name: jrys
-    desc: qq群查看今日运势并签到
-    usage: /jrys
+social_link: https://github.com/fiatlux2333
+tags:
+  - 运势
+  - 签到
+  - 娱乐
+  - fortune
+  - daily

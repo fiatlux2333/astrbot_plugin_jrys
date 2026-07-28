@@ -2,7 +2,7 @@
   "background_url": {
     "description": "背景图 URL、本地图片路径或本地图片目录",
     "type": "string",
-    "hint": "支持 http/https 图片 API；也支持相对插件目录的路径，例如 assets/default_background.jpg。目录会随机抽取图片。",
+    "hint": "支持公网 http/https 图片 API；内网、回环及本地域名会被拒绝。也支持相对插件目录的路径，例如 assets/default_background.jpg。目录会随机抽取图片。",
     "default": "assets/default_background.jpg"
   },
   "browser_executable_path": {

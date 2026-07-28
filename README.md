@@ -69,7 +69,7 @@ playwright install chromium
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `background_url` | str | `assets/default_background.jpg` | 签到卡片背景图 URL、本地图片路径或本地图片目录（随机选图） |
+| `background_url` | str | `assets/default_background.jpg` | 签到卡片公网图片 URL、本地图片路径或本地图片目录（随机选图）；内网、回环及本地域名会被拒绝 |
 | `browser_executable_path` | str | `""` | Chromium/Chrome 可执行文件路径，留空则使用 Playwright 自带浏览器 |
 | `enable_hitokoto` | bool | `true` | 是否启用随机一言（来自 hitokoto.cn） |
 | `hitokoto_api` | str | `https://v1.hitokoto.cn/?c=a&c=b&c=k` | 一言 API 地址 |
@@ -141,7 +141,7 @@ playwright install chromium
 - 🍀 **每日运势** - 0~95 共 13 档运势值，附带趣味运势描述
 - ✅ **每日宜忌** - 基于 seed 随机生成今日宜做和忌做事项
 - 💬 **随机一言** - 集成 hitokoto.cn，卡片底部展示随机句子
-- 🖼️ **自定义背景** - 支持 URL、本地图片或本地图片目录（随机选图）
+- 🖼️ **自定义背景** - 支持公网 URL、本地图片或本地图片目录（随机选图）
 - 🔄 **纯文本回退** - 图片生成失败时自动降级为纯文本消息
 
 ## 📄 许可证

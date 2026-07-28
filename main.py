@@ -5,6 +5,7 @@ import ipaddress
 import json
 import math
 import random
+import socket
 from datetime import date, datetime, time
 from pathlib import Path
 from typing import Any
@@ -19,13 +20,13 @@ PLUGIN_NAME = "astrbot_plugin_jrys"
 # 以下常量需与 metadata.yaml 保持一致,避免版本/作者信息脱节。
 PLUGIN_AUTHOR = "fiatlux2333"
 PLUGIN_DESC = "今日运势签到插件 - AstrBot HTML 渲染版"
-PLUGIN_VERSION = "v1.3.1"
+PLUGIN_VERSION = "v1.3.2"
 # 旧插件名（曾用 _fix 后缀），用于一次性迁移历史签到数据
 LEGACY_PLUGIN_NAME = "astrbot_plugin_jrys_fix"
 SEED_MOD = 1_000_000_001
 CARD_WIDTH = 600
 VIEWPORT_HEIGHT = 2160
-RENDER_CACHE_VERSION = 2
+RENDER_CACHE_VERSION = 3
 
 # 字体文件 → 系统路径候选列表（按优先级，跨平台）
 # Debian/Ubuntu: apt install fonts-noto-cjk fonts-noto-color-emoji fonts-wqy-zenhei
@@ -237,7 +238,10 @@ def get_greeting(hour: int) -> str:
 
 
 def is_url(value: str) -> bool:
-    return value.startswith("http://") or value.startswith("https://")
+    try:
+        return urlparse(value).scheme.lower() in {"http", "https"}
+    except ValueError:
+        return False
 
 
 def escape(value: Any) -> str:
@@ -264,9 +268,18 @@ class JrysFix(Star):
         self.sign_coin_min = self.config_int("sign_coin_min", 1)
         self.sign_coin_max = self.config_int("sign_coin_max", 100)
         self.currency = str(self.config.get("currency", "coin"))
-        self.background_url = str(
+        background_source = str(
             self.config.get("background_url", "assets/default_background.jpg")
         ).strip()
+        self.background_url = (
+            self._validate_http_url(
+                background_source,
+                "background_url",
+                "assets/default_background.jpg",
+            )
+            if is_url(background_source)
+            else background_source
+        )
         self.enable_hitokoto = self.config_bool("enable_hitokoto", True)
         default_hitokoto_api = "https://v1.hitokoto.cn/?c=a&c=b&c=k"
         self.hitokoto_api = self._validate_http_url(
@@ -306,28 +319,73 @@ class JrysFix(Star):
         """校验 http/https URL 并拒绝指向内网/回环地址,防止 SSRF。"""
         if not url:
             return default
-        parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"}:
+        try:
+            parsed = urlparse(url)
+            host = parsed.hostname
+            parsed.port
+        except ValueError:
+            logger.warning(f"URL {key} 格式无效,回退默认值。")
+            return default
+        if parsed.scheme.lower() not in {"http", "https"} or not host:
             logger.warning(f"配置 {key} 必须是 http/https URL,回退默认值。")
             return default
-        host = parsed.hostname
-        if host:
-            try:
-                ip = ipaddress.ip_address(host)
-                if (
-                    ip.is_private
-                    or ip.is_loopback
-                    or ip.is_reserved
-                    or ip.is_link_local
-                ):
-                    logger.warning(
-                        f"配置 {key} 指向内网地址 {host},已拒绝,回退默认值。"
-                    )
-                    return default
-            except ValueError:
-                # 域名,放行
-                pass
+        if parsed.username is not None or parsed.password is not None:
+            logger.warning(f"URL {key} 不允许包含用户凭据,回退默认值。")
+            return default
+        normalized_host = host.rstrip(".").lower()
+        if normalized_host == "localhost" or normalized_host.endswith(
+            (".localhost", ".local", ".internal", ".lan")
+        ):
+            logger.warning(f"URL {key} 指向本地主机 {host},已拒绝,回退默认值。")
+            return default
+        try:
+            ip = ipaddress.ip_address(normalized_host)
+            if not ip.is_global:
+                logger.warning(f"URL {key} 指向非公网地址 {host},已拒绝,回退默认值。")
+                return default
+        except ValueError:
+            pass
         return url
+
+    async def _is_public_http_url(self, url: str) -> bool:
+        """解析远程资源主机并确保所有结果均为公网地址。"""
+        validated = self._validate_http_url(url, "render_resource", "")
+        if not validated:
+            return False
+        parsed = urlparse(validated)
+        host = parsed.hostname
+        if not host:
+            return False
+        try:
+            ipaddress.ip_address(host.rstrip("."))
+            return True
+        except ValueError:
+            pass
+        try:
+            addresses = await asyncio.to_thread(
+                socket.getaddrinfo,
+                host,
+                parsed.port or (443 if parsed.scheme.lower() == "https" else 80),
+                type=socket.SOCK_STREAM,
+            )
+        except OSError as exc:
+            logger.warning(f"远程图片域名 {host} 解析失败,已阻止请求：{exc}")
+            return False
+        resolved_ips = {item[4][0].split("%", 1)[0] for item in addresses}
+        return bool(resolved_ips) and all(
+            ipaddress.ip_address(address).is_global for address in resolved_ips
+        )
+
+    async def _route_render_request(self, route) -> None:
+        """阻止渲染页面及重定向请求访问非公网 HTTP(S) 地址。"""
+        request_url = route.request.url
+        if is_url(request_url) and not await self._is_public_http_url(request_url):
+            logger.warning(
+                f"已阻止渲染器访问非公网主机：{urlparse(request_url).hostname}"
+            )
+            await route.abort()
+            return
+        await route.continue_()
 
     async def initialize(self):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -465,13 +523,22 @@ class JrysFix(Star):
         return path.resolve().as_uri()
 
     def get_avatar_url(self, event: AstrMessageEvent) -> str:
+        default_avatar = (
+            (plugin_dir() / "assets" / "default_avatar.png").resolve().as_uri()
+        )
+
+        def safe_avatar(value: Any) -> str:
+            return self._validate_http_url(str(value).strip(), "avatar_url", "")
+
         for method_name in ("get_sender_avatar", "get_sender_avatar_url"):
             method = getattr(event, method_name, None)
             if callable(method):
                 try:
                     value = method()
                     if value:
-                        return str(value)
+                        avatar = safe_avatar(value)
+                        if avatar:
+                            return avatar
                 except Exception:
                     pass
         message_obj = getattr(event, "message_obj", None)
@@ -479,7 +546,9 @@ class JrysFix(Star):
         for attr in ("avatar", "avatar_url"):
             value = getattr(sender, attr, None)
             if value:
-                return str(value)
+                avatar = safe_avatar(value)
+                if avatar:
+                    return avatar
         # 仅 QQ 系平台使用 q1.qlogo.cn 兜底,避免在其他平台拿到无关 QQ 用户的头像。
         sender_id = ""
         platform = ""
@@ -493,7 +562,7 @@ class JrysFix(Star):
             and sender_id.isdigit()
         ):
             return f"https://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=100"
-        return (plugin_dir() / "assets" / "default_avatar.png").resolve().as_uri()
+        return default_avatar
 
     async def get_hitokoto(self) -> str:
         if not self.enable_hitokoto or not self.hitokoto_api:
@@ -679,11 +748,14 @@ class JrysFix(Star):
         )
         # hitokoto 已在 get_hitokoto() 中转义，此处直接插入（仅含受控的 <br>）
         hitokoto = view["hitokoto"]
+        background = escape(view["background"])
+        avatar = escape(view["avatar"])
         return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src file: http: https:; style-src 'unsafe-inline'; font-src file:">
 <title>运势签到</title>
 <style>
 @font-face {{ font-family: 'osans4'; src: url("{self.font_uri("osans4.subset.woff2")}") format("woff2"); }}
@@ -721,9 +793,9 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
 </head>
 <body id="body">
   <div class="container">
-    <img class="hero" src="{view["background"]}" alt="background">
+    <img class="hero" src="{background}" alt="background">
     <div class="header">
-      <img class="avatar" src="{view["avatar"]}" alt="avatar">
+      <img class="avatar" src="{avatar}" alt="avatar">
       <div class="dateInfo">
         <span>{escape(view["greeting"])}</span>
         <span class="date">{escape(view["date"])}</span>
@@ -815,6 +887,7 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
                 device_scale_factor=1,
             )
             try:
+                await page.route("**/*", self._route_render_request)
                 await page.goto(
                     html_path.resolve().as_uri(), wait_until="domcontentloaded"
                 )
@@ -837,6 +910,16 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
                         self.asset_uri("assets/default_background.jpg"),
                     )
                     await asyncio.wait_for(hero.evaluate(decode_image), timeout=5)
+
+                avatar = page.locator(".avatar")
+                try:
+                    await asyncio.wait_for(avatar.evaluate(decode_image), timeout=5)
+                except Exception:
+                    await avatar.evaluate(
+                        "(image, source) => { image.src = source; }",
+                        self.asset_uri("assets/default_avatar.png"),
+                    )
+                    await asyncio.wait_for(avatar.evaluate(decode_image), timeout=5)
 
                 # 先写入唯一临时文件再原子替换，避免并发请求读到半写入 PNG。
                 temp_image_path = image_path.with_name(
