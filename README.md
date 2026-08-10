@@ -113,9 +113,9 @@ playwright install chromium
 本插件渲染签到卡片时使用以下方案保证 emoji 和中文字体正确显示：
 
 - **Emoji**：使用内置的 [Twemoji](https://github.com/twitter/twemoji) 官方 SVG 图片（🫧🪙🍀🌠），完全不依赖系统 emoji 字体
-- **中文**：优先通过 Google Fonts CDN 加载 `Noto Sans SC`，回退到系统字体
+- **中文**：依赖系统安装的中文字体，优先级依次为 `Noto Sans SC`、Windows `SimHei`、`WenQuanYi Zen Hei`。渲染页面启用了 `font-src file:` 的 CSP，不会从任何 CDN 加载字体，因此**必须**在服务器上安装中文字体
 
-> Linux / Docker 服务器若未安装中文字体，图片中的中文会显示为方框（□）。请在安装阶段完成字体安装，或在有外网访问的环境下让 Google Fonts CDN 自动加载。
+> Linux / Docker 服务器若未安装中文字体，图片中的中文会显示为方框（□）。请在安装阶段完成字体安装。
 
 ## ⚠️ 注意事项
 

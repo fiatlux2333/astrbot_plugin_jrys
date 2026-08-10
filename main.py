@@ -17,10 +17,11 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, register
 
 PLUGIN_NAME = "astrbot_plugin_jrys"
-# 以下常量需与 metadata.yaml 保持一致,避免版本/作者信息脱节。
+# 以下常量需与 metadata.yaml 保持一致，避免版本/作者信息脱节。
+# 注意：version 遵循 semver 规范，不带 v 前缀（官方发布文档与 commit 57d8ab2 已确认）。
 PLUGIN_AUTHOR = "fiatlux2333"
-PLUGIN_DESC = "今日运势签到插件 - AstrBot HTML 渲染版"
-PLUGIN_VERSION = "v1.3.2"
+PLUGIN_DESC = "今日运势签到插件 - 基于 AstrBot HTML 渲染引擎，Playwright 截图输出。"
+PLUGIN_VERSION = "1.3.2"
 # 旧插件名（曾用 _fix 后缀），用于一次性迁移历史签到数据
 LEGACY_PLUGIN_NAME = "astrbot_plugin_jrys_fix"
 SEED_MOD = 1_000_000_001
@@ -661,7 +662,14 @@ class JrysFix(Star):
                 },
             )
             if user.get("last_signin") == today:
-                return {"status": 1}
+                return {
+                    "status": 1,
+                    "exp_gain": 0,
+                    "coin_gain": 0,
+                    "total_exp": int(user.get("exp", 0)),
+                    "total_coin": int(user.get("coin", 0)),
+                    "signin_count": int(user.get("signin_count", 0)),
+                }
             luck = self.get_fortune(uid)
             exp_gain = self.random_with_luck(self.sign_exp_min, self.sign_exp_max, luck)
             coin_gain = self.random_with_luck(
@@ -691,12 +699,11 @@ class JrysFix(Star):
         hitokoto: str = "",
     ) -> dict[str, Any]:
         luck = self.get_fortune(uid)
-        user = self.user_data.get(uid, {})
-        total_exp = int(signin_result.get("total_exp", user.get("exp", 0)))
-        total_coin = int(signin_result.get("total_coin", user.get("coin", 0)))
-        signin_count = int(
-            signin_result.get("signin_count", user.get("signin_count", 0))
-        )
+        # signin_result 始终携带完整快照(无论是否已签到),
+        # 因此无需回退读取共享字典 self.user_data,避免并发数据竞争。
+        total_exp = int(signin_result.get("total_exp", 0))
+        total_coin = int(signin_result.get("total_coin", 0))
+        signin_count = int(signin_result.get("signin_count", 0))
         level, next_exp = self.get_level_info(total_exp)
         if next_exp is None:
             exp_text = f"{total_exp}/???"
