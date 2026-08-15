@@ -21,7 +21,7 @@ PLUGIN_NAME = "astrbot_plugin_jrys"
 # 注意：version 遵循 semver 规范，不带 v 前缀（官方发布文档与 commit 57d8ab2 已确认）。
 PLUGIN_AUTHOR = "fiatlux2333"
 PLUGIN_DESC = "今日运势签到插件 - 基于 AstrBot HTML 渲染引擎，Playwright 截图输出。"
-PLUGIN_VERSION = "1.3.4"
+PLUGIN_VERSION = "1.3.5"
 # 旧插件名（曾用 _fix 后缀），用于一次性迁移历史签到数据
 LEGACY_PLUGIN_NAME = "astrbot_plugin_jrys_fix"
 SEED_MOD = 1_000_000_001
@@ -213,6 +213,22 @@ def stable_user_number(uid: str) -> int:
     return int(digest[:16], 16)
 
 
+def safe_uid_for_filename(uid: str) -> str:
+    """将发送者 ID 净化为安全的文件名片段。
+
+    不同平台的用户标识格式各异（如 Matrix 的 @user:server、
+    Telegram 的负数 ID），可能包含路径分隔符等危险字符，
+    统一收敛为 [A-Za-z0-9_-] 白名单，超长时取稳定哈希前缀。
+    """
+    sanitized = "".join(
+        ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in str(uid)
+    )
+    if not sanitized or len(sanitized) > 64:
+        digest = hashlib.sha256(str(uid).encode("utf-8")).hexdigest()[:16]
+        sanitized = f"{sanitized[:32]}_{digest}"
+    return sanitized
+
+
 def seeded_random(seed: int) -> float:
     value = math.sin(seed) * 10000
     return value - math.floor(value)
@@ -349,7 +365,14 @@ class JrysFix(Star):
         return url
 
     async def _is_public_http_url(self, url: str) -> bool:
-        """解析远程资源主机并确保所有结果均为公网地址。"""
+        """解析远程资源主机并确保所有解析结果均为公网地址。
+
+        已知残留风险（TOCTOU）：此处 DNS 解析校验与浏览器实际发起请求
+        之间存在时间窗，理论上可被 DNS rebinding 绕过。渲染页面本身
+        不含脚本（CSP default-src 'none'）、仅加载一张图片，即使被
+        rebinding 也只能让浏览器访问内网的一张图片，无法读取内容并
+        回传，因此判定为可接受的低危残留风险。
+        """
         validated = self._validate_http_url(url, "render_resource", "")
         if not validated:
             return False
@@ -843,13 +866,23 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
                 return self._browser
             if self._playwright is None:
                 self._playwright = await async_playwright().start()
-            launch_args: dict[str, Any] = {
+            common_args: dict[str, Any] = {
                 "headless": True,
-                "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+                "args": ["--disable-dev-shm-usage"],
             }
             if self.browser_executable_path:
-                launch_args["executable_path"] = self.browser_executable_path
-            self._browser = await self._playwright.chromium.launch(**launch_args)
+                common_args["executable_path"] = self.browser_executable_path
+            # 默认保持 Chromium 自带沙箱；仅在以 root 运行（常见于容器）导致
+            # 沙箱启动失败时，才降级为无沙箱重试，尽量缩小无沙箱的暴露面。
+            try:
+                self._browser = await self._playwright.chromium.launch(**common_args)
+            except Exception as first_error:
+                logger.warning(
+                    f"Chromium 沙箱模式启动失败，尝试无沙箱模式重试：{first_error}"
+                )
+                self._browser = await self._playwright.chromium.launch(
+                    **common_args, args=[*common_args["args"], "--no-sandbox"]
+                )
             return self._browser
 
     async def close_browser(self):
@@ -871,9 +904,10 @@ hr {{ border: 0; border-top: 1px solid #bcbcbc; margin: 10px 0 0; }}
     async def render_card(self, view: dict[str, Any]) -> Path:
         html_text = self.build_html(view)
         digest_source = f"{RENDER_CACHE_VERSION}\0{html_text}"
-        digest = hashlib.md5(digest_source.encode("utf-8")).hexdigest()[:10]
+        # 仅用于本地缓存文件名去重，非加密用途；用 sha256 规避弱哈希告警。
+        digest = hashlib.sha256(digest_source.encode("utf-8")).hexdigest()[:12]
         today = date.today().isoformat()
-        uid = view.get("uid", "anon")
+        uid = safe_uid_for_filename(str(view.get("uid", "anon")))
         html_path = self.cache_dir / f"jrys_{today}_{uid}_{digest}.html"
         image_path = self.cache_dir / f"jrys_{today}_{uid}_{digest}.png"
         # 缓存命中:今日已渲染过相同内容的卡片,直接返回,避免重复启动浏览器。
