@@ -21,7 +21,7 @@ PLUGIN_NAME = "astrbot_plugin_jrys"
 # 注意：version 遵循 semver 规范，不带 v 前缀（官方发布文档与 commit 57d8ab2 已确认）。
 PLUGIN_AUTHOR = "fiatlux2333"
 PLUGIN_DESC = "今日运势签到插件 - 基于 AstrBot HTML 渲染引擎，Playwright 截图输出。"
-PLUGIN_VERSION = "1.3.6"
+PLUGIN_VERSION = "1.3.7"
 # 旧插件名（曾用 _fix 后缀），用于一次性迁移历史签到数据
 LEGACY_PLUGIN_NAME = "astrbot_plugin_jrys_fix"
 SEED_MOD = 1_000_000_001
